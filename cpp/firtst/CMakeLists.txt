@@ -3,4 +3,6 @@ project(firtst C)
 
 set(CMAKE_C_STANDARD 11)
 
-add_executable(firtst main.c)
+add_executable(firtst main.c
+        str.h
+        str.c)

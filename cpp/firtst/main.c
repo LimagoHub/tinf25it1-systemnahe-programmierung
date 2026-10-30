@@ -1,25 +1,42 @@
 #include <stdio.h>
+#include <stdlib.h>
 
-size_t stringlength(char *myArray) {
+
+
+size_t stringlength(char *myArray) BEGIN
+
+
     size_t result = 0;
     while(myArray[result] ) {
         result++;
     }
     return result;
 }
+void stringcopy(char *destination, const char * source) {
+    while (*destination++ = *source++);
+
+}
 
 
+char * gibMirAs(size_t size ) {
+    char *buffer= (char*)malloc((size + 1) *sizeof(char));
+    size_t i;
+    for(i = 0; i < size; i++) {
+        buffer[i] = 'A';
+    }
+    buffer[i] = 0;
+    return buffer;
+}
 
 
 int main(void) {
 
 
-   // char buffer[]= {'H', 'a', 0};
+   char *a = gibMirAs(10);
+    printf("%s\n", a);
 
-    char buffer[]= "Hallo";
-    printf("%s\n", buffer);
-    size_t anzahl = stringlength(buffer);
+    free(a);
     return 0;
 }
 // feld+ index * sizeof(int)
-// 3000 + 0 *4
+// 3000 + 0 *a
