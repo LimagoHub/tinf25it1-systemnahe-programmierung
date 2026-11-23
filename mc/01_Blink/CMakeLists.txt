@@ -1,32 +1,61 @@
 cmake_minimum_required(VERSION 3.20)
+
+# Toolchain-Datei laden, falls CLion sie nicht schon per Profil mitgibt
+if(NOT CMAKE_TOOLCHAIN_FILE)
+    set(CMAKE_TOOLCHAIN_FILE ${CMAKE_CURRENT_SOURCE_DIR}/avr-toolchain.cmake)
+endif()
+
 project(01_Blink C)
-# --- Einstellungen (können per -D auf der Kommandozeile überschrieben werden) ---
-set(MCU atmega328p CACHE STRING "Mikrocontroller für avr-gcc")
-set(AVRDUDE_PART m328p CACHE STRING "Mikrocontroller für avrdude")
-set(F_CPU 16000000UL CACHE STRING "Taktfrequenz in Hz")
-set(PROG_DEV COM10 CACHE STRING "Serieller Port des Nano (Windows: COM3 o. ä.)")
-set(BAUD 57600 CACHE STRING "Bootloader-Baudrate (Clone: 57600, Original: 115200)")
-find_program(AVR_OBJCOPY avr-objcopy REQUIRED)
-find_program(AVR_SIZE avr-size REQUIRED)
-find_program(AVRDUDE avrdude REQUIRED)
-add_executable(${PROJECT_NAME} main.c)
-set_target_properties(${PROJECT_NAME} PROPERTIES SUFFIX ".elf")
-target_compile_options(${PROJECT_NAME} PRIVATE -mmcu=${MCU} -Os -Wall -Wextra -std=c11)
-target_compile_definitions(${PROJECT_NAME} PRIVATE F_CPU=${F_CPU})
-target_link_options(${PROJECT_NAME} PRIVATE -mmcu=${MCU})
-# Nach dem Bauen: HEX-Datei erzeugen und Speicherbedarf anzeigen
-add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-        COMMAND ${AVR_OBJCOPY} -O ihex -R .eeprom $<TARGET_FILE:${PROJECT_NAME}> ${PROJECT_NAME}.hex
-        COMMAND ${AVR_SIZE} $<TARGET_FILE:${PROJECT_NAME}>
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-        COMMENT "Erzeuge ${PROJECT_NAME}.hex"
+
+# Fest: Arduino Nano (ATmega328P, 16 MHz, Arduino-Bootloader)
+set(MCU atmega328p)
+set(F_CPU 16000000UL)
+set(PROG arduino)
+
+# ============ HIER ANPASSEN ============
+set(PORT COM5)  # <<< DEINE Portnummer eintragen!
+set(BAUD 57600) # Nano-Clone (alter Bootloader): 57600, Original-Nano (neuer Bootloader): 115200
+# =======================================
+
+set(CMAKE_C_STANDARD 99)
+
+# Optionen fuer den Compiler
+add_compile_options(
+        -mmcu=${MCU}           # Fuer welchen Chip uebersetzt wird
+        -DF_CPU=${F_CPU}       # Taktfrequenz an das Programm weitergeben
+        -Os                    # Auf kleine Programmgroesse optimieren
+        -Wall -Wextra          # Alle Warnungen anzeigen
+        -ffunction-sections -fdata-sections
 )
-# Target "flash": baut bei Bedarf und überträgt das Programm auf den Nano
+
+# Optionen fuer den Linker
+add_link_options(
+        -mmcu=${MCU}
+        -Wl,--gc-sections      # Ungenutzten Code entfernen
+        -Wl,-Map=${PROJECT_NAME}.map
+)
+
+# Das eigentliche Programm
+add_executable(${PROJECT_NAME}.elf main.c)
+
+# Nach dem Uebersetzen: HEX-Datei erzeugen und Groesse anzeigen
+add_custom_command(TARGET ${PROJECT_NAME}.elf POST_BUILD
+        COMMAND avr-objcopy -O ihex -R .eeprom
+        $<TARGET_FILE:${PROJECT_NAME}.elf> ${PROJECT_NAME}.hex
+        COMMAND avr-size $<TARGET_FILE:${PROJECT_NAME}.elf>
+        COMMENT "HEX-Datei erzeugen"
+)
+
+# --- Zusaetzliche Knoepfe ---
 add_custom_target(flash
-        COMMAND ${AVRDUDE} -c arduino -p ${AVRDUDE_PART} -P ${PROG_DEV} -b ${BAUD}
+        COMMAND avrdude -c ${PROG} -P ${PORT} -b ${BAUD} -p ${MCU}
         -U flash:w:${PROJECT_NAME}.hex:i
-        DEPENDS ${PROJECT_NAME}
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-        COMMENT "Flashe ${PROJECT_NAME}.hex auf ${PROG_DEV}"
-        USES_TERMINAL
+        DEPENDS ${PROJECT_NAME}.elf
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+        COMMENT "Programm auf den Chip laden"
+)
+
+add_custom_target(testconnection
+        COMMAND avrdude -c ${PROG} -P ${PORT} -b ${BAUD} -p ${MCU} -v
+        COMMENT "Verbindung zum Chip pruefen"
 )
