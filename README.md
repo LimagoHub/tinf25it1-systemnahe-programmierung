@@ -159,19 +159,62 @@ Die Skizze zeigt, was beim Aufruf von `verdoppeln()` aus dem folgenden Beispiel 
 2. Beim Aufruf von `verdoppeln(x)` kommt ein neuer Stackframe dazu. Der Stackpointer wandert nach unten.
 3. Beim `return` wird der Stackpointer zurückgesetzt. Die alten Werte stehen noch im Speicher, gehören aber niemandem mehr und werden beim nächsten Aufruf überschrieben. Genau deshalb darf man keinen Zeiger auf eine lokale Variable zurückgeben (Kapitel 5).
 
-Beim Verlassen der Funktion wird der Stackpointer einfach zurückgesetzt. Der Speicher wird nicht gelöscht, sondern beim nächsten Aufruf überschrieben. Die Rückgabewerte kommen bei AVR nicht über den Stack, sondern über die Register r24/r25.
+Beim Verlassen der Funktion wird der Stackpointer einfach zurückgesetzt. Der Speicher wird nicht gelöscht, sondern beim nächsten Aufruf überschrieben. Die Rückgabewerte kommen bei AVR nicht über den Stack, sondern in Registern (Abschnitt 4.1).
 
 ```c
 uint8_t a = 1;
 
 uint8_t verdoppeln(uint8_t x)   // Aufruf: Rücksprungadresse auf den Stack
 {
-    uint8_t ergebnis = x * 2;  // lebt im Stackframe
+    uint8_t ergebnis = x * 2;  // lebt im Stackframe (ohne Optimierung; mit -Os nur im Register)
     return ergebnis;           // Rückgabe über Register
 }                              // Stackframe wird freigegeben
 ```
 
 > **Typischer Fehler:** Unterprogramme sind nicht kostenlos. Jeder Aufruf kostet Takte (`call`/`ret`), das Sichern von Registern und Platz auf dem Stack. Bei nur 2 KByte SRAM und tief verschachtelten Aufrufen kann der Stack in die Daten hineinwachsen (Stacküberlauf). Rekursion ist auf Mikrocontrollern deshalb tabu.
+
+### 4.1 Rückgabewerte
+
+Aufrufer und Funktion halten sich an eine feste Vereinbarung des Compilers, die **Aufrufkonvention** (ABI). Sie legt fest, wo die Parameter stehen und wo der Rückgabewert liegt. Bei avr-gcc gilt:
+
+- Rückgabewerte **bis 8 Byte** kommen in **Registern** zurück, nicht über den Stack.
+- **Größere** Rückgabewerte schreibt die Funktion in einen Speicherplatz, den der **Aufrufer** vorher in seinem eigenen Stackframe reserviert hat.
+
+`return x;` bedeutet also: Lege den Wert in die vereinbarten Register und springe mit `ret` zurück. `ret` holt dabei die Rücksprungadresse vom Stack. Danach liest der Aufrufer den Wert aus den Registern.
+
+| Größe | Typ (Beispiel) | Register |
+|---|---|---|
+| 1 Byte | `uint8_t`, `char` | r24 |
+| 2 Byte | `uint16_t`, `int`, Zeiger | r25:r24 (r24 = Low-Byte) |
+| 4 Byte | `uint32_t`, `float`, `double` | r25 … r22 (r22 = Low-Byte) |
+| 8 Byte | `uint64_t`, kleine `struct` | r25 … r18 |
+
+Auch die **Parameter** kommen in Registern, absteigend ab r24: Der erste Parameter steht in r24 (bzw. r25:r24), der zweite in r22 (bzw. r23:r22) und so weiter. Erst wenn die Register r8 bis r25 nicht reichen, kommen Parameter auf den Stack.
+
+**verdoppeln() in Assembler (avr-gcc -Os)**
+
+```
+verdoppeln:
+    lsl  r24            ; x steht in r24, *2 = links schieben, Ergebnis bleibt in r24
+    ret                 ; Rücksprungadresse vom Stack holen und zurückspringen
+
+; Aufrufer: a = verdoppeln(21) + 1;
+    ldi  r24, 21        ; Parameter in r24
+    call verdoppeln     ; Rücksprungadresse auf den Stack
+    subi r24, -1        ; Rückgabewert steht in r24, +1
+    sts  a, r24         ; in der Variablen a speichern
+```
+
+Die Funktion schreibt den Wert nirgends in den Speicher, er kommt einfach im Register r24 zurück. Zurückgegeben wird immer eine **Kopie des Werts**, nicht die Variable selbst. Deshalb ist `return ergebnis;` in Ordnung, `return &ergebnis;` aber nicht: Die Adresse zeigt nach dem `ret` in einen freigegebenen Stackframe (Kapitel 5).
+
+**Große Rückgabewerte:** Gibt eine Funktion zum Beispiel ein `struct` mit 10 Byte zurück, reserviert der Aufrufer diese 10 Byte in seinem Stackframe und übergibt deren Adresse als versteckten ersten Parameter in r25:r24. Die Funktion schreibt das Ergebnis direkt dorthin. Im C-Code sieht das aus wie ein normales `return`, es kostet aber Kopierarbeit und Stack. Auf einem Controller mit 2 KByte SRAM ist das spürbar.
+
+**Mehrere Werte zurückgeben:** `return` liefert genau einen Wert. Für mehrere Werte gibt es zwei Wege:
+
+- **Ausgabeparameter über Zeiger:** `void teile(uint8_t a, uint8_t b, uint8_t *q, uint8_t *r) { *q = a / b; *r = a % b; }` mit dem Aufruf `teile(17, 5, &quot, &rest);`. Die Funktion bekommt Adressen und schreibt darüber direkt in die Variablen des Aufrufers.
+- **Ein kleines struct zurückgeben**, z. B. `typedef struct { int16_t x, y; } punkt_t;`. Mit 4 Byte kommt es komplett in r22 bis r25 zurück.
+
+> **Merke:** Beim ATmega328P liegen Rückgabewerte **nicht** auf dem Stack, sondern in Registern (r24, r25:r24, r25…r22, r25…r18). Auf dem PC (x86-64) ist es genauso, nur mit anderen Registern (z. B. `rax`).
 
 ## 5 Zeiger und hängende Zeiger
 
