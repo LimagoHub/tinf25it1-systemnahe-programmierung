@@ -1,12 +1,17 @@
 #include "serial.h"
 
-void serial_init(void)
+static volatile fptr mycallback;
+
+void serial_init(fptr callback)
 {
+    mycallback = callback;
     UBRR0H = (MYUBRR >> 8);
     UBRR0L = MYUBRR;
 
     UCSR0B |= (1 << RXEN0) | (1 << TXEN0);      // Empfaenger und Sender an
-    UCSR0C |= (1 << UCSZ01) | (1 << UCSZ00);    // 8 Datenbits, 1 Stopbit
+    UCSR0C |= (1 << UCSZ01) | (1 << UCSZ00);
+    // 8 Datenbits, 1 Stopbit
+    UCSR0B |= (1 << RXCIE0);
 }
 
 void serial_send(uint8_t data)
@@ -23,22 +28,8 @@ uint8_t serial_receive(void)
     return UDR0;
 }
 
-void serial_send_string(const char *textToSend)
-{
-    while (*textToSend)
-        serial_send((uint8_t)*textToSend++);
-}
 
-void serial_send_integer(int16_t numberToSend)
+ISR (USART_RX_vect)
 {
-    char buffer[8];
-    itoa(numberToSend, buffer, 10);
-    serial_send_string(buffer);
-}
-
-void serial_send_double(double numberToSend)
-{
-    char buffer[16];
-    dtostrf(numberToSend, 4, 2, buffer);
-    serial_send_string(buffer);
+    mycallback(UDR0);
 }

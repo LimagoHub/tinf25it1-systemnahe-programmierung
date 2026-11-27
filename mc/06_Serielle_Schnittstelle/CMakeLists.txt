@@ -13,7 +13,7 @@ set(F_CPU 16000000UL)
 set(PROG arduino)
 
 # ============ HIER ANPASSEN ============
-set(PORT COM5)  # <<< DEINE Portnummer eintragen!
+set(PORT COM10)  # <<< DEINE Portnummer eintragen!
 set(BAUD 57600) # Nano-Clone (alter Bootloader): 57600, Original-Nano (neuer Bootloader): 115200
 # =======================================
 
@@ -36,7 +36,8 @@ add_link_options(
 )
 
 # Das eigentliche Programm
-add_executable(${PROJECT_NAME}.elf main.c serial.c)
+add_executable(${PROJECT_NAME}.elf main.c serial.c
+)
 
 # Nach dem Uebersetzen: HEX-Datei erzeugen und Groesse anzeigen
 add_custom_command(TARGET ${PROJECT_NAME}.elf POST_BUILD
